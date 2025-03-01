@@ -2,6 +2,7 @@
 """
 Script to extract metadata and content from Shamela HTML files.
 Handles both single HTML files and multi-file books.
+Generates a unique ID for each book and stores all metadata in a single file.
 """
 
 import argparse

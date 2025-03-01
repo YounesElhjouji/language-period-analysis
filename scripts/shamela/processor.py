@@ -5,13 +5,15 @@ import json
 import logging
 import os
 import re
-from pathlib import Path
-from typing import List
+from typing import Dict, List, Any
 
 from bs4 import BeautifulSoup
-from shamela.content import (extract_content_from_file,
-                             extract_content_from_files)
-from shamela.metadata import extract_metadata
+
+from shamela.metadata import (
+    extract_metadata,
+    update_content_length,
+)
+from shamela.content import extract_content_from_file, extract_content_from_files
 
 logger = logging.getLogger(__name__)
 
@@ -29,14 +31,14 @@ def is_multifile_book(directory: str) -> bool:
     if not os.path.isdir(directory):
         return False
 
-    # Check for 000.htm file which is the first file in multi-file books
-    if not os.path.exists(os.path.join(directory, "000.htm")):
+    # Check for 001.htm file which is the first file in multi-file books
+    if not os.path.exists(os.path.join(directory, "001.htm")):
         return False
 
     # Check for at least one more numbered HTML file
     files = os.listdir(directory)
     for file in files:
-        if re.match(r"00[1-9]\.htm", file):
+        if re.match(r"00[2-9]\.htm", file):
             return True
 
     return False
@@ -65,6 +67,43 @@ def get_book_files(directory: str) -> List[str]:
     return files
 
 
+def load_metadata_file(output_dir: str) -> Dict[str, Any]:
+    """
+    Load existing metadata file or create a new one.
+
+    Args:
+        output_dir: Directory where metadata file is stored
+
+    Returns:
+        Dict: Metadata dictionary
+    """
+    metadata_path = os.path.join(output_dir, "metadata.json")
+
+    if os.path.exists(metadata_path):
+        try:
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            logger.warning("Could not parse existing metadata file. Creating new one.")
+            return {}
+
+    return {}
+
+
+def save_metadata_file(metadata: Dict[str, Any], output_dir: str) -> None:
+    """
+    Save metadata to file.
+
+    Args:
+        metadata: Metadata dictionary
+        output_dir: Directory to save metadata file
+    """
+    metadata_path = os.path.join(output_dir, "metadata.json")
+
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, ensure_ascii=False, indent=2)
+
+
 def process_single_file(file_path: str, output_dir: str) -> bool:
     """
     Process a single HTML file.
@@ -77,26 +116,32 @@ def process_single_file(file_path: str, output_dir: str) -> bool:
         bool: True if processing was successful
     """
     try:
-        base_name = Path(file_path).stem
+        # Load existing metadata
+        all_metadata = load_metadata_file(output_dir)
 
         with open(file_path, "r", encoding="utf-8") as file:
             html_content = file.read()
 
         soup = BeautifulSoup(html_content, "html.parser")
-        metadata = extract_metadata(soup)
+        book_metadata = extract_metadata(soup)
+        book_id = book_metadata["book_id"]
+
+        # Extract content
         body_text = extract_content_from_file(file_path)
 
-        # Save metadata
-        metadata_path = os.path.join(output_dir, f"{base_name}_metadata.json")
-        with open(metadata_path, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, ensure_ascii=False, indent=2)
+        # Update content length
+        book_metadata = update_content_length(book_metadata, body_text)
 
         # Save content
-        text_path = os.path.join(output_dir, f"{base_name}_text.txt")
+        text_path = os.path.join(output_dir, f"{book_id}.txt")
         with open(text_path, "w", encoding="utf-8") as f:
             f.write(body_text)
 
-        logger.info(f"Processed single file: {file_path}")
+        # Add to metadata collection
+        all_metadata[book_id] = book_metadata
+        save_metadata_file(all_metadata, output_dir)
+
+        logger.info(f"Processed single file: {file_path} -> {book_id}")
         return True
 
     except Exception as e:
@@ -116,6 +161,9 @@ def process_multifile_book(directory: str, output_dir: str) -> bool:
         bool: True if processing was successful
     """
     try:
+        # Load existing metadata
+        all_metadata = load_metadata_file(output_dir)
+
         book_files = get_book_files(directory)
         if not book_files:
             logger.error(f"No HTML files found in {directory}")
@@ -127,25 +175,25 @@ def process_multifile_book(directory: str, output_dir: str) -> bool:
             html_content = file.read()
 
         soup = BeautifulSoup(html_content, "html.parser")
-        metadata = extract_metadata(soup)
+        book_metadata = extract_metadata(soup)
+        book_id = book_metadata["book_id"]
 
         # Extract content from all files
         body_text = extract_content_from_files(book_files)
 
-        # Use directory name as base name
-        base_name = os.path.basename(directory)
-
-        # Save metadata
-        metadata_path = os.path.join(output_dir, f"{base_name}_metadata.json")
-        with open(metadata_path, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, ensure_ascii=False, indent=2)
+        # Update content length
+        book_metadata = update_content_length(book_metadata, body_text)
 
         # Save content
-        text_path = os.path.join(output_dir, f"{base_name}_text.txt")
+        text_path = os.path.join(output_dir, f"{book_id}.txt")
         with open(text_path, "w", encoding="utf-8") as f:
             f.write(body_text)
 
-        logger.info(f"Processed multi-file book: {directory}")
+        # Add to metadata collection
+        all_metadata[book_id] = book_metadata
+        save_metadata_file(all_metadata, output_dir)
+
+        logger.info(f"Processed multi-file book: {directory} -> {book_id}")
         return True
 
     except Exception as e:
@@ -175,11 +223,9 @@ def process_path(path: str, output_dir: str) -> bool:
             success = True
             for item in os.listdir(path):
                 item_path = os.path.join(path, item)
-                item_output_dir = os.path.join(output_dir, item)
 
                 if os.path.isdir(item_path):
-                    os.makedirs(item_output_dir, exist_ok=True)
-                    if not process_path(item_path, item_output_dir):
+                    if not process_path(item_path, output_dir):
                         success = False
 
                 elif item.endswith(".htm"):

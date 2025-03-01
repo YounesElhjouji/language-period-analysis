@@ -3,14 +3,15 @@
 
 import logging
 import re
-from typing import Any, Dict, Optional, Union
+import uuid
+from typing import Dict, Any, Union
 
-from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4 import BeautifulSoup, Tag, NavigableString
 
 logger = logging.getLogger(__name__)
 
 # Required metadata fields
-REQUIRED_METADATA = {"book_name", "author", "section", "author_death_year"}
+REQUIRED_METADATA = {"book_name", "author", "section"}
 
 
 class MetadataExtractionError(Exception):
@@ -39,6 +40,11 @@ def has_class(element: Any, class_name: str) -> bool:
     return class_name in classes if classes else False
 
 
+def generate_book_id() -> str:
+    """Generate a unique ID for a book."""
+    return str(uuid.uuid4())
+
+
 def extract_metadata(soup: BeautifulSoup) -> Dict[str, Any]:
     """
     Extract metadata from the first page of a Shamela HTML file.
@@ -57,6 +63,8 @@ def extract_metadata(soup: BeautifulSoup) -> Dict[str, Any]:
         "author": None,
         "author_death_year": None,
         "section": None,
+        "book_id": generate_book_id(),
+        "content_length": 0,  # Will be updated later
     }
 
     first_page = soup.select_one(".PageText")
@@ -132,4 +140,10 @@ def extract_metadata(soup: BeautifulSoup) -> Dict[str, Any]:
     if missing_fields:
         logger.warning(f"Missing required metadata fields: {', '.join(missing_fields)}")
 
+    return metadata
+
+
+def update_content_length(metadata: Dict[str, Any], content: str) -> Dict[str, Any]:
+    """Update metadata with content length."""
+    metadata["content_length"] = len(content)
     return metadata
