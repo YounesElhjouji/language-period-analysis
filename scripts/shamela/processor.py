@@ -5,15 +5,14 @@ import json
 import logging
 import os
 import re
-from typing import Dict, List, Any
+import traceback
+from typing import Any, Dict, List
 
 from bs4 import BeautifulSoup
 
-from shamela.metadata import (
-    extract_metadata,
-    update_content_length,
-)
-from shamela.content import extract_content_from_file, extract_content_from_files
+from shamela.content import (extract_content_from_file,
+                             extract_content_from_files)
+from shamela.metadata import extract_metadata, update_content_length
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +43,38 @@ def is_multifile_book(directory: str) -> bool:
     return False
 
 
+def filter_numeric_files(files: List[str]) -> List[str]:
+    """
+    Filter files to keep only those with numeric filenames and sort them.
+
+    Args:
+        files: List of file paths
+
+    Returns:
+        List of sorted file paths with numeric filenames
+    """
+    numeric_files = []
+    ignored_files = []
+
+    for file_path in files:
+        basename = os.path.basename(file_path).split(".")[0]
+        if basename.isdigit():
+            numeric_files.append((int(basename), file_path))
+        else:
+            ignored_files.append(file_path)
+
+    # Log warning for ignored files
+    if ignored_files:
+        logger.warning(
+            f"Ignored {len(ignored_files)} files that don't have numeric filenames "
+            f"(showing first 10): {', '.join(ignored_files[:10])}"
+        )
+
+    # Sort by numeric value and return just the file paths
+    numeric_files.sort()
+    return [file_path for _, file_path in numeric_files]
+
+
 def get_book_files(directory: str) -> List[str]:
     """
     Get all HTML files for a book in correct order.
@@ -61,10 +92,8 @@ def get_book_files(directory: str) -> List[str]:
         if file.endswith(".htm"):
             files.append(os.path.join(directory, file))
 
-    # Sort files numerically
-    files.sort(key=lambda x: int(os.path.basename(x).split(".")[0]))
-
-    return files
+    # Filter and sort files
+    return filter_numeric_files(files)
 
 
 def load_metadata_file(output_dir: str) -> Dict[str, Any]:
@@ -141,7 +170,7 @@ def process_single_file(file_path: str, output_dir: str) -> bool:
         all_metadata[book_id] = book_metadata
         save_metadata_file(all_metadata, output_dir)
 
-        logger.info(f"Processed single file: {file_path} -> {book_id}")
+        logger.debug(f"Processed single file: {file_path} -> {book_id}")
         return True
 
     except Exception as e:
@@ -193,10 +222,12 @@ def process_multifile_book(directory: str, output_dir: str) -> bool:
         all_metadata[book_id] = book_metadata
         save_metadata_file(all_metadata, output_dir)
 
-        logger.info(f"Processed multi-file book: {directory} -> {book_id}")
+        logger.debug(f"Processed multi-file book: {directory} -> {book_id}")
         return True
 
     except Exception as e:
+        print(e)
+        traceback.print_exc()
         logger.error(f"Error processing book directory {directory}: {str(e)}")
         return False
 

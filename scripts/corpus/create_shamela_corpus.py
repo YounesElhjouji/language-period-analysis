@@ -7,13 +7,11 @@ import json
 import logging
 import os
 import re
-from collections import Counter
-from typing import Any, Dict, List, Optional, Tuple
+import time
+from typing import Any, Dict
 
 import nltk
 from nltk.corpus.reader.plaintext import PlaintextCorpusReader
-from nltk.probability import FreqDist
-from nltk.util import ngrams
 
 # Configure logging
 logging.basicConfig(
@@ -151,77 +149,73 @@ class ShamelaCorpus:
             f"Created corpus with {len(self.selected_books)} books in {corpus_dir}"
         )
 
-    def load_corpus(self) -> Optional[PlaintextCorpusReader]:
-        """Load the created corpus using NLTK's PlaintextCorpusReader."""
+    def analyze_corpus(self) -> Dict[str, Any]:
+        """
+        Analyze the corpus and return statistics.
+
+        Returns:
+            Dict containing corpus statistics
+        """
         corpus_dir = os.path.join(self.output_dir, "shamela_corpus")
 
         if not os.path.exists(corpus_dir):
             logger.error(f"Corpus directory not found at {corpus_dir}")
-            return None
+            return {}
 
-        corpus = PlaintextCorpusReader(
-            corpus_dir,
-            r".*\.txt",
-            encoding="utf8",
-            paragraph_block_reader=self._read_paragraphs,
+        start_time = time.time()
+
+        # Load the corpus
+        corpus = PlaintextCorpusReader(corpus_dir, r".*\.txt", encoding="utf8")
+
+        load_time = time.time() - start_time
+        logger.info(f"Loaded corpus in {load_time:.2f} seconds")
+
+        # Count words and characters
+        total_words = 0
+        total_chars = 0
+        word_count_by_file = {}
+
+        for fileid in corpus.fileids():
+            # Count words in this file
+            words = re.findall(r"\b\w+\b", corpus.raw(fileid))
+            word_count = len(words)
+            total_words += word_count
+            total_chars += len(corpus.raw(fileid))
+
+            # Store word count for this file
+            word_count_by_file[fileid] = word_count
+
+        # Calculate average words per book
+        avg_words_per_book = (
+            total_words / len(corpus.fileids()) if corpus.fileids() else 0
         )
 
-        logger.info(f"Loaded corpus with {len(corpus.fileids())} files")
-        return corpus
+        # Get largest and smallest books
+        if word_count_by_file:
+            largest_book = max(word_count_by_file.items(), key=lambda x: x[1])
+            smallest_book = min(word_count_by_file.items(), key=lambda x: x[1])
+        else:
+            largest_book = ("none", 0)
+            smallest_book = ("none", 0)
 
-    @staticmethod
-    def _read_paragraphs(stream):
-        """Custom paragraph reader that splits text on blank lines."""
-        paragraphs = []
-        current = []
+        # Compile statistics
+        stats = {
+            "num_books": len(corpus.fileids()),
+            "total_words": total_words,
+            "total_chars": total_chars,
+            "avg_words_per_book": avg_words_per_book,
+            "largest_book": {
+                "filename": largest_book[0],
+                "word_count": largest_book[1],
+            },
+            "smallest_book": {
+                "filename": smallest_book[0],
+                "word_count": smallest_book[1],
+            },
+            "load_time_seconds": load_time,
+        }
 
-        for line in stream:
-            line = line.strip()
-            if line:
-                current.append(line)
-            else:
-                if current:
-                    paragraphs.append(" ".join(current))
-                    current = []
-
-        if current:
-            paragraphs.append(" ".join(current))
-
-        return paragraphs
-
-    def analyze_ngrams(
-        self, n: int = 5, top_k: int = 20
-    ) -> List[Tuple[Tuple[str, ...], int]]:
-        """
-        Analyze the most frequent n-grams in the corpus.
-
-        Args:
-            n: Size of n-grams
-            top_k: Number of top n-grams to return
-
-        Returns:
-            List of (n-gram, frequency) tuples
-        """
-        corpus = self.load_corpus()
-        if not corpus:
-            return []
-
-        # Tokenize all words in the corpus
-        all_words = []
-        for fileid in corpus.fileids():
-            words = corpus.words(fileid)
-            all_words.extend(words)
-
-        # Generate n-grams
-        all_ngrams = list(ngrams(all_words, n))
-
-        # Count frequencies
-        fdist = FreqDist(all_ngrams)
-
-        # Get top k n-grams
-        top_ngrams = fdist.most_common(top_k)
-
-        return top_ngrams
+        return stats
 
     def run(self) -> None:
         """Run the complete corpus creation and analysis process."""
@@ -229,13 +223,32 @@ class ShamelaCorpus:
         self.select_books()
         self.create_corpus()
 
-        # Analyze 5-grams
-        top_5grams = self.analyze_ngrams(n=5, top_k=20)
+        # Analyze corpus
+        stats = self.analyze_corpus()
 
-        print("\nTop 20 5-grams in the corpus:")
-        print("============================")
-        for i, (ngram, count) in enumerate(top_5grams, 1):
-            print(f"{i}. {' '.join(ngram)} (Frequency: {count})")
+        # Print corpus statistics
+        print("\nShamela Corpus Statistics:")
+        print("=========================")
+        print(f"Number of books: {stats['num_books']}")
+        print(f"Total words: {stats['total_words']:,}")
+        print(f"Total characters: {stats['total_chars']:,}")
+        print(f"Average words per book: {stats['avg_words_per_book']:.2f}")
+        print(
+            f"Largest book: {stats['largest_book']['filename']} ({stats['largest_book']['word_count']:,} words)"
+        )
+        print(
+            f"Smallest book: {stats['smallest_book']['filename']} ({stats['smallest_book']['word_count']:,} words)"
+        )
+        print(f"Corpus load time: {stats['load_time_seconds']:.2f} seconds")
+
+        # Save statistics to file
+        stats_path = os.path.join(
+            self.output_dir, "shamela_corpus", "corpus_stats.json"
+        )
+        with open(stats_path, "w", encoding="utf-8") as f:
+            json.dump(stats, f, ensure_ascii=False, indent=2)
+
+        logger.info(f"Saved corpus statistics to {stats_path}")
 
 
 def main():

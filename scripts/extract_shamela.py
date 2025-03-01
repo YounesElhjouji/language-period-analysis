@@ -10,15 +10,43 @@ import logging
 import os
 import sys
 
+import colorlog
+
 from shamela.processor import process_path
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler()],
-)
-logger = logging.getLogger(__name__)
+
+# Configure subtle colorized logging
+def setup_logger(log_level=logging.INFO):
+    """Set up a subtly colorized logger with mostly white text"""
+    handler = colorlog.StreamHandler()
+    handler.setFormatter(
+        colorlog.ColoredFormatter(
+            "%(log_color)s%(asctime)s%(reset)s - %(levelname_log_color)s%(levelname)s%(reset)s - %(message)s",
+            log_colors={
+                "DEBUG": "white",
+                "INFO": "white",
+                "WARNING": "yellow",
+                "ERROR": "red",
+                "CRITICAL": "red",
+            },
+            secondary_log_colors={
+                "levelname": {
+                    "DEBUG": "white",
+                    "INFO": "white",
+                    "WARNING": "yellow",
+                    "ERROR": "red",
+                    "CRITICAL": "red,bold",
+                }
+            },
+            style="%",
+        )
+    )
+
+    logger = colorlog.getLogger()
+    logger.setLevel(log_level)
+    logger.handlers = []  # Remove any existing handlers
+    logger.addHandler(handler)
+    return logger
 
 
 def main():
@@ -38,8 +66,8 @@ def main():
 
     args = parser.parse_args()
 
-    # Set log level
-    logger.setLevel(getattr(logging, args.log_level))
+    # Set up colorized logger
+    logger = setup_logger(getattr(logging, args.log_level))
 
     # Create output directory
     output_dir = args.output_dir
@@ -47,7 +75,12 @@ def main():
 
     # Process the input path
     try:
+        logger.info(f"Processing input path: {args.input_path}")
         success = process_path(args.input_path, output_dir)
+        if success:
+            logger.info("Processing completed successfully")
+        else:
+            logger.error("Processing failed")
         sys.exit(0 if success else 1)
     except Exception as e:
         logger.critical(f"Unhandled exception: {str(e)}")

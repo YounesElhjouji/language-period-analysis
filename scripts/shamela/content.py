@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """Functions for extracting content from Shamela HTML files."""
 
+import logging
+import os
 import re
 from typing import List
 
-from bs4 import BeautifulSoup, Tag, NavigableString
+from bs4 import BeautifulSoup, NavigableString, Tag
+from toolz import diff
 
 from shamela.metadata import has_class
+
+logger = logging.getLogger(__name__)
 
 
 def extract_page_content(page: Tag) -> str:
@@ -103,10 +108,9 @@ def extract_content_from_files(file_paths: List[str]) -> str:
     """
     combined_text = ""
 
-    for i, file_path in enumerate(file_paths):
-        # Skip metadata page only for the first file
-        skip_first = i == 0
-        content = extract_content_from_file(file_path, skip_first)
+    # Extract content from each file
+    for file_path in file_paths:
+        content = extract_content_from_file(file_path)
         combined_text += content + "\n\n"
 
     return clean_text(combined_text)
