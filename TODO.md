@@ -1,2 +1,3 @@
 - [x] Script to extract file
-- [ ] Script to extract folder
+- [x] Script to extract folder
+- [ ] Script to create nltk corpus
