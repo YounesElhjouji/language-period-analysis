@@ -24,7 +24,7 @@ def extract_page_content(page: Tag) -> str:
         ):
             title_text = element.get_text().strip()
             if title_text:
-                page_text += f"\n## {title_text}\n"
+                page_text += f"\n{title_text}\n"
             continue
 
         if isinstance(element, Tag) and element.name == "p":
