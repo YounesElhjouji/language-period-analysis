@@ -65,9 +65,12 @@ def filter_numeric_files(files: List[str]) -> List[str]:
 
     # Log warning for ignored files
     if ignored_files:
+        ignored_file_names = []
+        for filepath in ignored_files:
+            ignored_file_names.append(os.path.basename(filepath))
         logger.warning(
             f"Ignored {len(ignored_files)} files that don't have numeric filenames "
-            f"(showing first 10): {', '.join(ignored_files[:10])}"
+            f"(showing first 10): {', '.join(ignored_file_names[:10])}"
         )
 
     # Sort by numeric value and return just the file paths

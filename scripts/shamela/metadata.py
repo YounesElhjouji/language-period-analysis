@@ -4,14 +4,14 @@
 import logging
 import re
 import uuid
-from typing import Dict, Any, Union
+from typing import Any, Dict, Union
 
-from bs4 import BeautifulSoup, Tag, NavigableString
+from bs4 import BeautifulSoup, NavigableString, Tag
 
 logger = logging.getLogger(__name__)
 
 # Required metadata fields
-REQUIRED_METADATA = {"book_name", "author", "section"}
+REQUIRED_METADATA = {"book_name", "author", "section", "author_death_year"}
 
 
 class MetadataExtractionError(Exception):
@@ -138,7 +138,9 @@ def extract_metadata(soup: BeautifulSoup) -> Dict[str, Any]:
 
     missing_fields = [field for field in REQUIRED_METADATA if not metadata.get(field)]
     if missing_fields:
-        logger.warning(f"Missing required metadata fields: {', '.join(missing_fields)}")
+        logger.warning(
+            f"Missing fields: {', '.join(missing_fields)}, book {metadata['book_name'][::-1]}"
+        )
 
     return metadata
 
